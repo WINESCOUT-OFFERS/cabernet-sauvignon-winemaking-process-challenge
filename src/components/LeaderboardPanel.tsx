@@ -1,4 +1,4 @@
-import { Crown, RotateCcw, Trophy, Zap } from 'lucide-react';
+import { Crown, Trophy, Zap } from 'lucide-react';
 import { formatProgress, type LeaderboardEntry } from '../utils/quizLogic';
 import { JoinedParticipants } from './JoinedParticipants';
 
@@ -7,7 +7,6 @@ interface LeaderboardPanelProps {
   currentPlayerId: string | null;
   totalQuestions: number;
   isLoading: boolean;
-  onOpenReset: () => void;
 }
 
 export function LeaderboardPanel({
@@ -15,7 +14,6 @@ export function LeaderboardPanel({
   currentPlayerId,
   totalQuestions,
   isLoading,
-  onOpenReset,
 }: LeaderboardPanelProps) {
   return (
     <aside
@@ -143,17 +141,6 @@ export function LeaderboardPanel({
             </ol>
           )}
         </div>
-      </div>
-
-      <div className="px-6 py-4 border-t border-[#dfd3be] flex items-center justify-end">
-        <button
-          type="button"
-          onClick={onOpenReset}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-[#1a1a1a]/75 hover:text-[#8c1f3d] hover:bg-white/70 transition-colors cursor-pointer whitespace-nowrap"
-        >
-          <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
-          Reset Leaderboard
-        </button>
       </div>
     </aside>
   );

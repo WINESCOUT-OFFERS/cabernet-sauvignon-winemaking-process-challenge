@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { ArrowRight, RotateCcw, Wine } from 'lucide-react';
+import { ArrowRight, Lock, Wine } from 'lucide-react';
 import { QUIZ_SCENARIO, QUIZ_TITLE } from '../data/quizQuestions';
 import { validateNickname, type LeaderboardEntry } from '../utils/quizLogic';
 import { JoinedParticipants } from './JoinedParticipants';
@@ -9,7 +9,7 @@ interface LoginScreenProps {
   isJoining: boolean;
   joinError: string | null;
   onJoin: (nickname: string) => Promise<void>;
-  onOpenReset: () => void;
+  onOpenAdminLogin: () => void;
 }
 
 export function LoginScreen({
@@ -17,7 +17,7 @@ export function LoginScreen({
   isJoining,
   joinError,
   onJoin,
-  onOpenReset,
+  onOpenAdminLogin,
 }: LoginScreenProps) {
   const [nickname, setNickname] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -48,7 +48,7 @@ export function LoginScreen({
         <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
           <div className="lg:col-span-7">
             <p className="text-xs font-medium tracking-wide text-[#1a1a1a]/65 mb-3">
-              Bordeaux Winemaking Simulation · 15 Questions
+              French Cabernet Sauvignon AOC Label Winemaking Challenge · 15 Questions
             </p>
 
             <h1 className="font-serif text-3xl sm:text-4xl lg:text-[42px] font-bold leading-[1.12] tracking-tight text-[#8c1f3d] [text-wrap:balance]">
@@ -133,11 +133,11 @@ export function LoginScreen({
       <footer className="px-6 py-4 flex items-center justify-end">
         <button
           type="button"
-          onClick={onOpenReset}
+          onClick={onOpenAdminLogin}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-[#1a1a1a]/65 hover:text-[#8c1f3d] hover:bg-stone-100 transition-colors cursor-pointer whitespace-nowrap"
         >
-          <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
-          Reset Leaderboard
+          <Lock className="w-3.5 h-3.5" aria-hidden="true" />
+          Admin Login
         </button>
       </footer>
     </div>

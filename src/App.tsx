@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
+import { AdminLoginModal } from './components/AdminLoginModal';
+import { AdminProjectorView } from './components/AdminProjectorView';
 import { CompletionSummary } from './components/CompletionSummary';
 import { JoinedParticipants } from './components/JoinedParticipants';
 import { LeaderboardPanel } from './components/LeaderboardPanel';
@@ -32,6 +34,8 @@ export default function App() {
   const [isJoining, setIsJoining] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
 
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
@@ -170,13 +174,24 @@ export default function App() {
 
   return (
     <>
-      {!currentPlayer ? (
+      {isAdminAuthenticated ? (
+        <AdminProjectorView
+          entries={leaderboard}
+          totalQuestions={totalQuestions}
+          isLoading={isLoadingLeaderboard}
+          onOpenReset={() => setIsResetModalOpen(true)}
+          onLogout={() => {
+            setIsAdminAuthenticated(false);
+            setIsResetModalOpen(false);
+          }}
+        />
+      ) : !currentPlayer ? (
         <LoginScreen
           entries={leaderboard}
           isJoining={isJoining}
           joinError={joinError}
           onJoin={handleJoin}
-          onOpenReset={() => setIsResetModalOpen(true)}
+          onOpenAdminLogin={() => setIsAdminLoginOpen(true)}
         />
       ) : (
         <div className="min-h-screen flex flex-col lg:flex-row bg-white">
@@ -218,17 +233,27 @@ export default function App() {
             currentPlayerId={currentPlayer.id}
             totalQuestions={totalQuestions}
             isLoading={isLoadingLeaderboard}
-            onOpenReset={() => setIsResetModalOpen(true)}
           />
         </div>
       )}
 
-      <ResetModal
-        isOpen={isResetModalOpen}
-        isResetting={isResetting}
-        onClose={() => setIsResetModalOpen(false)}
-        onConfirmReset={handleConfirmReset}
+      <AdminLoginModal
+        isOpen={isAdminLoginOpen}
+        onClose={() => setIsAdminLoginOpen(false)}
+        onSuccess={() => {
+          setIsAdminLoginOpen(false);
+          setIsAdminAuthenticated(true);
+        }}
       />
+
+      {isAdminAuthenticated && (
+        <ResetModal
+          isOpen={isResetModalOpen}
+          isResetting={isResetting}
+          onClose={() => setIsResetModalOpen(false)}
+          onConfirmReset={handleConfirmReset}
+        />
+      )}
     </>
   );
 }
