@@ -15,6 +15,7 @@ import {
   submitQuestionProgress,
   subscribeToLeaderboard,
 } from './services/leaderboardService';
+import { supabase } from './supabaseClient';
 import { evaluateAnswer, type LeaderboardEntry } from './utils/quizLogic';
 
 export default function App() {
@@ -60,6 +61,41 @@ export default function App() {
     });
     return unsubscribe;
   }, [refreshLeaderboard]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const verifySession = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (isMounted) {
+          setIsAdminAuthenticated(Boolean(data.session));
+        }
+      } catch {
+        if (isMounted) {
+          setIsAdminAuthenticated(false);
+        }
+      }
+    };
+
+    void verifySession();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!isMounted) return;
+      const hasSession = Boolean(session);
+      setIsAdminAuthenticated(hasSession);
+      if (!hasSession) {
+        setIsResetModalOpen(false);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const handleJoin = useCallback(
     async (nickname: string) => {
@@ -156,6 +192,13 @@ export default function App() {
   };
 
   const handleConfirmReset = async () => {
+    const { data } = await supabase.auth.getSession();
+    if (!data.session) {
+      setIsAdminAuthenticated(false);
+      setIsResetModalOpen(false);
+      throw new Error('Admin session required to reset the leaderboard.');
+    }
+
     setIsResetting(true);
     try {
       await resetLeaderboard();
@@ -164,6 +207,15 @@ export default function App() {
       await refreshLeaderboard();
     } finally {
       setIsResetting(false);
+    }
+  };
+
+  const handleAdminLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } finally {
+      setIsAdminAuthenticated(false);
+      setIsResetModalOpen(false);
     }
   };
 
@@ -180,10 +232,7 @@ export default function App() {
           totalQuestions={totalQuestions}
           isLoading={isLoadingLeaderboard}
           onOpenReset={() => setIsResetModalOpen(true)}
-          onLogout={() => {
-            setIsAdminAuthenticated(false);
-            setIsResetModalOpen(false);
-          }}
+          onLogout={() => void handleAdminLogout()}
         />
       ) : !currentPlayer ? (
         <LoginScreen

@@ -1,9 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Lock, X } from 'lucide-react';
-
-// Edit these constants to change the Admin Projector View credentials.
-export const ADMIN_USERNAME = 'admin';
-export const ADMIN_PASSWORD = 'wine2026';
+import { supabase } from '../supabaseClient';
+import { formatAdminEmail } from '../utils/quizLogic';
 
 interface AdminLoginModalProps {
   isOpen: boolean;
@@ -18,27 +16,49 @@ export function AdminLoginModal({
 }: AdminLoginModalProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   const handleClose = () => {
+    if (isSubmitting) return;
     setUsername('');
     setPassword('');
     setError(null);
     onClose();
   };
 
-  const handleSubmit = (event: FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (username.trim() !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
-      setError('Invalid admin username or password.');
+    const email = formatAdminEmail(username);
+    if (!email || !password) {
+      setError('Invalid admin username or password');
       return;
     }
+
+    setIsSubmitting(true);
     setError(null);
-    setUsername('');
-    setPassword('');
-    onSuccess();
+
+    try {
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (authError || !data.session) {
+        setError('Invalid admin username or password');
+        return;
+      }
+
+      setUsername('');
+      setPassword('');
+      onSuccess();
+    } catch {
+      setError('Invalid admin username or password');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -84,12 +104,13 @@ export function AdminLoginModal({
               type="text"
               autoComplete="username"
               autoFocus
+              disabled={isSubmitting}
               value={username}
               onChange={(e) => {
                 setUsername(e.target.value);
                 if (error) setError(null);
               }}
-              placeholder="Enter username"
+              placeholder="Enter username or email"
               className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 bg-white text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#8c1f3d] focus:border-[#8c1f3d]"
             />
           </div>
@@ -103,6 +124,7 @@ export function AdminLoginModal({
               name="password"
               type="password"
               autoComplete="current-password"
+              disabled={isSubmitting}
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value);
@@ -122,16 +144,18 @@ export function AdminLoginModal({
           <div className="flex items-center justify-end gap-2.5 pt-1">
             <button
               type="button"
+              disabled={isSubmitting}
               onClick={handleClose}
-              className="px-4 py-2 rounded-xl border border-stone-300 text-sm font-medium text-[#1a1a1a] hover:bg-stone-50 cursor-pointer whitespace-nowrap"
+              className="px-4 py-2 rounded-xl border border-stone-300 text-sm font-medium text-[#1a1a1a] hover:bg-stone-50 cursor-pointer whitespace-nowrap disabled:opacity-60"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-4 py-2 rounded-xl bg-[#8c1f3d] hover:bg-[#741832] text-white text-sm font-semibold cursor-pointer whitespace-nowrap"
+              disabled={isSubmitting}
+              className="px-4 py-2 rounded-xl bg-[#8c1f3d] hover:bg-[#741832] disabled:opacity-60 text-white text-sm font-semibold cursor-pointer whitespace-nowrap"
             >
-              Sign In
+              {isSubmitting ? 'Signing In...' : 'Sign In'}
             </button>
           </div>
         </form>

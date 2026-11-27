@@ -4,11 +4,11 @@ import { QUIZ_QUESTIONS } from '../data/quizQuestions';
 import {
   computeSubmissionUpdate,
   evaluateAnswer,
+  formatAdminEmail,
   formatProgress,
   sortByJoinOrder,
   sortLeaderboard,
   validateNickname,
-  verifyInstructorPin,
   type LeaderboardEntry,
 } from './quizLogic';
 
@@ -180,12 +180,14 @@ test('formatProgress displays Qn/15 or Completed', () => {
   );
 });
 
-test('validateNickname and verifyInstructorPin enforce rules', () => {
+test('validateNickname and formatAdminEmail enforce rules', () => {
   assert.equal(validateNickname('   ').valid, false);
   assert.equal(validateNickname('  Sommelier Sam  ').valid, true);
   assert.equal(validateNickname('  Sommelier Sam  ').trimmed, 'Sommelier Sam');
-  assert.equal(verifyInstructorPin('1234'), true);
-  assert.equal(verifyInstructorPin('0000'), false);
+  assert.equal(formatAdminEmail('admin'), 'admin@admin.local');
+  assert.equal(formatAdminEmail('  WineAdmin '), 'wineadmin@admin.local');
+  assert.equal(formatAdminEmail('director@chateau.fr'), 'director@chateau.fr');
+  assert.equal(formatAdminEmail('   '), '');
 });
 
 test('sortByJoinOrder orders participants chronologically by created_at', () => {

@@ -29,8 +29,13 @@ export interface SubmissionComputationResult {
   finishedAt: string | null;
 }
 
-export const INSTRUCTOR_PIN = '1234';
 export const SPEED_BONUS_POINTS = 3;
+
+export function formatAdminEmail(rawUsername: string): string {
+  const trimmed = rawUsername.trim().toLowerCase();
+  if (!trimmed) return '';
+  return trimmed.includes('@') ? trimmed : `${trimmed}@admin.local`;
+}
 
 export function validateNickname(raw: string): { valid: boolean; trimmed: string; error?: string } {
   const trimmed = raw.trim();
@@ -41,10 +46,6 @@ export function validateNickname(raw: string): { valid: boolean; trimmed: string
     return { valid: false, trimmed, error: 'Nickname must be 32 characters or fewer.' };
   }
   return { valid: true, trimmed };
-}
-
-export function verifyInstructorPin(rawPin: string): boolean {
-  return rawPin.trim() === INSTRUCTOR_PIN;
 }
 
 export function evaluateAnswer(
