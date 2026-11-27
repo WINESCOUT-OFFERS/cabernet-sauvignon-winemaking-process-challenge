@@ -1,0 +1,141 @@
+import type { QuizQuestion } from '../data/quizQuestions';
+
+export interface LeaderboardEntry {
+  id: string;
+  nickname: string;
+  score: number;
+  current_question: number;
+  is_finished: boolean;
+  got_speed_bonus: boolean;
+  finished_at: string | null;
+  created_at: string;
+}
+
+export interface SubmissionComputationInput {
+  currentScore: number;
+  questionNumber: number;
+  totalQuestions: number;
+  isCorrect: boolean;
+  someoneAlreadyWonSpeedBonus: boolean;
+  nowIso?: string;
+}
+
+export interface SubmissionComputationResult {
+  nextScore: number;
+  nextQuestion: number;
+  isFinished: boolean;
+  gotSpeedBonus: boolean;
+  speedBonusPoints: number;
+  finishedAt: string | null;
+}
+
+export const INSTRUCTOR_PIN = '1234';
+export const SPEED_BONUS_POINTS = 3;
+
+export function validateNickname(raw: string): { valid: boolean; trimmed: string; error?: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { valid: false, trimmed, error: 'Please enter a nickname to join the challenge.' };
+  }
+  if (trimmed.length > 32) {
+    return { valid: false, trimmed, error: 'Nickname must be 32 characters or fewer.' };
+  }
+  return { valid: true, trimmed };
+}
+
+export function verifyInstructorPin(rawPin: string): boolean {
+  return rawPin.trim() === INSTRUCTOR_PIN;
+}
+
+export function evaluateAnswer(
+  question: QuizQuestion,
+  selectedOptionId: string,
+): { isCorrect: boolean; pointsEarned: number; correctOptionId: string } {
+  const isCorrect = question.correctOptionId === selectedOptionId;
+  return {
+    isCorrect,
+    pointsEarned: isCorrect ? 1 : 0,
+    correctOptionId: question.correctOptionId,
+  };
+}
+
+export function computeSubmissionUpdate({
+  currentScore,
+  questionNumber,
+  totalQuestions,
+  isCorrect,
+  someoneAlreadyWonSpeedBonus,
+  nowIso = new Date().toISOString(),
+}: SubmissionComputationInput): SubmissionComputationResult {
+  const questionPoints = isCorrect ? 1 : 0;
+  const isFinalQuestion = questionNumber >= totalQuestions;
+
+  if (isFinalQuestion) {
+    const awardedBonus = !someoneAlreadyWonSpeedBonus;
+    const speedBonusPoints = awardedBonus ? SPEED_BONUS_POINTS : 0;
+    return {
+      nextScore: currentScore + questionPoints + speedBonusPoints,
+      nextQuestion: totalQuestions,
+      isFinished: true,
+      gotSpeedBonus: awardedBonus,
+      speedBonusPoints,
+      finishedAt: nowIso,
+    };
+  }
+
+  return {
+    nextScore: currentScore + questionPoints,
+    nextQuestion: questionNumber + 1,
+    isFinished: false,
+    gotSpeedBonus: false,
+    speedBonusPoints: 0,
+    finishedAt: null,
+  };
+}
+
+function parseTimestamp(value: string | null | undefined): number {
+  if (!value) return Number.POSITIVE_INFINITY;
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? Number.POSITIVE_INFINITY : ms;
+}
+
+export function sortLeaderboard(entries: LeaderboardEntry[]): LeaderboardEntry[] {
+  return [...entries].sort((a, b) => {
+    if (b.score !== a.score) {
+      return b.score - a.score;
+    }
+
+    const aFinished = parseTimestamp(a.finished_at);
+    const bFinished = parseTimestamp(b.finished_at);
+    if (aFinished !== bFinished) {
+      return aFinished - bFinished;
+    }
+
+    const aCreated = parseTimestamp(a.created_at);
+    const bCreated = parseTimestamp(b.created_at);
+    if (aCreated !== bCreated) {
+      return aCreated - bCreated;
+    }
+
+    return String(a.id).localeCompare(String(b.id));
+  });
+}
+
+export function sortByJoinOrder(entries: LeaderboardEntry[]): LeaderboardEntry[] {
+  return [...entries].sort((a, b) => {
+    const aCreated = parseTimestamp(a.created_at);
+    const bCreated = parseTimestamp(b.created_at);
+    if (aCreated !== bCreated) {
+      return aCreated - bCreated;
+    }
+    return String(a.id).localeCompare(String(b.id));
+  });
+}
+
+export function formatProgress(entry: LeaderboardEntry, totalQuestions: number): string {
+  if (entry.is_finished) {
+    return 'Completed';
+  }
+  const qNum = Math.max(1, Math.min(entry.current_question || 1, totalQuestions));
+  return `Q${qNum}/${totalQuestions}`;
+}

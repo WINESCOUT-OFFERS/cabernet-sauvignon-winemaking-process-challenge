@@ -1,0 +1,6 @@
+{
+  "name": "CABERNET SAUVIGNON WINE MAKING PROCESS CHALLENGE",
+  "description": "Live multiplayer interactive wine-making quiz challenge with real-time Supabase leaderboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
