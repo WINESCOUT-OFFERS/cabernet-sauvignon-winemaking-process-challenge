@@ -31,6 +31,12 @@ export interface SubmissionComputationResult {
 
 export const SPEED_BONUS_POINTS = 3;
 export const QUIZ_STATE_NICKNAME = '__QUIZ_STATE__';
+export const COUNTDOWN_DURATION_SECONDS = 10;
+
+export interface QuizSyncState {
+  isStarted: boolean;
+  startedAt: string | null;
+}
 
 export function formatAdminEmail(rawUsername: string): string {
   const trimmed = rawUsername.trim().toLowerCase();
@@ -145,6 +151,32 @@ export function extractQuizStarted(entries: LeaderboardEntry[]): boolean {
   return entries.some(
     (entry) => entry.nickname === QUIZ_STATE_NICKNAME && entry.is_finished === true,
   );
+}
+
+export function extractQuizState(entries: LeaderboardEntry[]): QuizSyncState {
+  const controlRows = entries.filter((entry) => entry.nickname === QUIZ_STATE_NICKNAME);
+  if (controlRows.length === 0) {
+    return { isStarted: false, startedAt: null };
+  }
+  const activeRow = controlRows.find((row) => row.is_finished === true) ?? controlRows[0];
+  return {
+    isStarted: activeRow.is_finished === true,
+    startedAt: activeRow.finished_at ?? null,
+  };
+}
+
+export function computeCountdownSecondsRemaining(
+  isStarted: boolean,
+  startedAt: string | null,
+  nowMs: number = Date.now(),
+  durationSeconds: number = COUNTDOWN_DURATION_SECONDS,
+): number {
+  if (!isStarted) return durationSeconds;
+  if (!startedAt) return 0;
+  const startMs = Date.parse(startedAt);
+  if (Number.isNaN(startMs)) return 0;
+  const elapsedSeconds = Math.max(0, (nowMs - startMs) / 1000);
+  return Math.max(0, Math.ceil(durationSeconds - elapsedSeconds));
 }
 
 export function formatProgress(entry: LeaderboardEntry, totalQuestions: number): string {

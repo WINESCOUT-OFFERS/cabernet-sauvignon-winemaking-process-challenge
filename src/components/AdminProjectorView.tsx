@@ -12,6 +12,7 @@ interface AdminProjectorViewProps {
   totalQuestions: number;
   isLoading: boolean;
   isQuizStarted: boolean;
+  remainingSeconds: number;
   isStartingQuiz: boolean;
   onStartQuiz: () => Promise<void>;
   onOpenReset: () => void;
@@ -23,6 +24,7 @@ export function AdminProjectorView({
   totalQuestions,
   isLoading,
   isQuizStarted,
+  remainingSeconds,
   isStartingQuiz,
   onStartQuiz,
   onOpenReset,
@@ -50,41 +52,72 @@ export function AdminProjectorView({
             </h2>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 shrink-0 self-start">
-            {!isQuizStarted ? (
+          <div className="flex flex-col items-start lg:items-end gap-3 shrink-0 self-start">
+            <div className="flex flex-wrap items-center gap-3">
+              {!isQuizStarted ? (
+                <button
+                  type="button"
+                  disabled={isStartingQuiz}
+                  onClick={() => void onStartQuiz()}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#0b4f36] hover:bg-[#083b28] disabled:opacity-60 text-white text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap shadow-xs"
+                >
+                  <Play className="w-4 h-4" aria-hidden="true" />
+                  {isStartingQuiz ? 'Starting...' : 'Start Quiz'}
+                </button>
+              ) : (
+                <span
+                  data-testid="quiz-in-progress-badge"
+                  className="inline-flex items-center px-4 py-2.5 rounded-xl bg-[#0b4f36]/10 border border-[#0b4f36] text-[#0b4f36] text-sm font-semibold whitespace-nowrap"
+                >
+                  Quiz in Progress
+                </span>
+              )}
               <button
                 type="button"
-                disabled={isStartingQuiz}
-                onClick={() => void onStartQuiz()}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#0b4f36] hover:bg-[#083b28] disabled:opacity-60 text-white text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap shadow-xs"
+                onClick={onOpenReset}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[#8c1f3d] bg-white hover:bg-[#8c1f3d] text-[#8c1f3d] hover:text-white text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap"
               >
-                <Play className="w-4 h-4" aria-hidden="true" />
-                {isStartingQuiz ? 'Starting...' : 'Start Quiz'}
+                <RotateCcw className="w-4 h-4" aria-hidden="true" />
+                Reset Leaderboard
               </button>
-            ) : (
-              <span
-                data-testid="quiz-in-progress-badge"
-                className="inline-flex items-center px-4 py-2.5 rounded-xl bg-[#0b4f36]/10 border border-[#0b4f36] text-[#0b4f36] text-sm font-semibold whitespace-nowrap"
+              <button
+                type="button"
+                onClick={onLogout}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1a1a1a] hover:bg-black text-white text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap"
               >
-                Quiz in Progress
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={onOpenReset}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[#8c1f3d] bg-white hover:bg-[#8c1f3d] text-[#8c1f3d] hover:text-white text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap"
+                <LogOut className="w-4 h-4" aria-hidden="true" />
+                Log Out
+              </button>
+            </div>
+
+            <div
+              data-testid="admin-countdown-box"
+              aria-live="polite"
+              className={`w-full lg:w-auto min-w-[240px] rounded-2xl px-6 py-3.5 text-center border-2 ${
+                isQuizStarted && remainingSeconds === 0
+                  ? 'bg-[#f7f1e6] border-[#0b4f36]'
+                  : 'bg-[#f7f1e6] border-[#8c1f3d]'
+              }`}
             >
-              <RotateCcw className="w-4 h-4" aria-hidden="true" />
-              Reset Leaderboard
-            </button>
-            <button
-              type="button"
-              onClick={onLogout}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1a1a1a] hover:bg-black text-white text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap"
-            >
-              <LogOut className="w-4 h-4" aria-hidden="true" />
-              Log Out
-            </button>
+              {!isQuizStarted ? (
+                <div className="font-mono text-2xl sm:text-3xl font-bold tracking-wide text-[#8c1f3d] tabular-nums">
+                  10 SECONDS
+                </div>
+              ) : remainingSeconds > 0 ? (
+                <div className="flex items-baseline justify-center gap-3">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-[#1a1a1a]/70">
+                    Starting in
+                  </span>
+                  <span className="font-mono text-4xl font-bold text-[#8c1f3d] tabular-nums leading-none">
+                    {remainingSeconds}
+                  </span>
+                </div>
+              ) : (
+                <div className="font-mono text-2xl sm:text-3xl font-bold tracking-wide text-[#0b4f36]">
+                  LIVE - GO!
+                </div>
+              )}
+            </div>
           </div>
         </header>
 

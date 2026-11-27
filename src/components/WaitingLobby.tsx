@@ -1,14 +1,22 @@
-import { Clock, Users } from 'lucide-react';
+import { Clock, Timer, Users } from 'lucide-react';
 import { QUIZ_SCENARIO, QUIZ_TITLE } from '../data/quizQuestions';
 import { sortByJoinOrder, type LeaderboardEntry } from '../utils/quizLogic';
 
 interface WaitingLobbyProps {
   currentPlayer: LeaderboardEntry;
   participants: LeaderboardEntry[];
+  isQuizStarted: boolean;
+  remainingSeconds: number;
 }
 
-export function WaitingLobby({ currentPlayer, participants }: WaitingLobbyProps) {
+export function WaitingLobby({
+  currentPlayer,
+  participants,
+  isQuizStarted,
+  remainingSeconds,
+}: WaitingLobbyProps) {
   const ordered = sortByJoinOrder(participants);
+  const isCountingDown = isQuizStarted && remainingSeconds > 0;
 
   return (
     <main className="w-full lg:w-[70%] bg-white text-[#1a1a1a] px-6 py-8 sm:px-10 lg:px-12 lg:py-10 flex flex-col justify-between">
@@ -28,58 +36,80 @@ export function WaitingLobby({ currentPlayer, participants }: WaitingLobbyProps)
           </p>
         </header>
 
-        <section
-          aria-label="Waiting Lobby"
-          className="mt-8 rounded-2xl border border-[#dfd3be] bg-[#f7f1e6]/60 p-6 sm:p-8"
-        >
-          <div className="flex items-center gap-3 text-[#0b4f36]">
-            <Clock className="w-6 h-6 shrink-0" aria-hidden="true" />
-            <h3 className="font-serif text-xl sm:text-2xl font-bold text-[#0b4f36]">
-              Waiting for instructor to start the challenge...
-            </h3>
-          </div>
-
-          <p className="mt-3 text-sm sm:text-base text-[#1a1a1a]/80 leading-relaxed">
-            You are checked in as <strong>{currentPlayer.nickname}</strong>. Question 1 will open
-            automatically as soon as your instructor begins the session.
-          </p>
-
-          <div className="mt-6 pt-6 border-t border-[#dfd3be]">
-            <div className="flex items-center gap-2 text-sm font-semibold text-[#0b4f36]">
-              <Users className="w-4 h-4 text-[#8c1f3d] shrink-0" aria-hidden="true" />
-              <span>Joined Players ({ordered.length})</span>
+        {isCountingDown ? (
+          <section
+            aria-label="Countdown Banner"
+            aria-live="assertive"
+            data-testid="student-countdown-banner"
+            className="mt-8 rounded-2xl border-2 border-[#8c1f3d] bg-[#f7f1e6] p-8 sm:p-10 text-center"
+          >
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-white border border-[#8c1f3d]/30 text-[#8c1f3d] mb-4">
+              <Timer className="w-6 h-6" aria-hidden="true" />
             </div>
 
-            {ordered.length === 0 ? (
-              <p className="mt-3 text-sm text-[#1a1a1a]/70">
-                Waiting for participants to join...
-              </p>
-            ) : (
-              <ul
-                data-testid="lobby-joined-list"
-                className="mt-3 flex flex-wrap gap-2"
-              >
-                {ordered.map((entry) => {
-                  const isCurrent = entry.id === currentPlayer.id;
-                  return (
-                    <li key={entry.id}>
-                      <span
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#f7f1e6] text-[#1a1a1a] text-sm font-medium border whitespace-nowrap ${
-                          isCurrent ? 'border-[#8c1f3d] font-semibold' : 'border-[#0b4f36]'
-                        }`}
-                      >
-                        <span>{entry.nickname}</span>
-                        {isCurrent && (
-                          <span className="text-xs font-semibold text-[#8c1f3d]">(You)</span>
-                        )}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-        </section>
+            <h3 className="font-serif text-2xl sm:text-3xl font-bold text-[#0b4f36]">
+              Get Ready! Starting in {remainingSeconds}...
+            </h3>
+
+            <div className="mt-5 font-mono text-6xl sm:text-7xl font-bold text-[#8c1f3d] tabular-nums leading-none">
+              {remainingSeconds}
+            </div>
+
+            <p className="mt-4 text-sm sm:text-base text-[#1a1a1a]/80">
+              Question 1 will open automatically when the countdown reaches 0.
+            </p>
+          </section>
+        ) : (
+          <section
+            aria-label="Waiting Lobby"
+            className="mt-8 rounded-2xl border border-[#dfd3be] bg-[#f7f1e6]/60 p-6 sm:p-8"
+          >
+            <div className="flex items-center gap-3 text-[#0b4f36]">
+              <Clock className="w-6 h-6 shrink-0" aria-hidden="true" />
+              <h3 className="font-serif text-xl sm:text-2xl font-bold text-[#0b4f36]">
+                Waiting for instructor to start the challenge...
+              </h3>
+            </div>
+
+            <p className="mt-3 text-sm sm:text-base text-[#1a1a1a]/80 leading-relaxed">
+              You are checked in as <strong>{currentPlayer.nickname}</strong>. Question 1 will open
+              automatically as soon as your instructor begins the session.
+            </p>
+
+            <div className="mt-6 pt-6 border-t border-[#dfd3be]">
+              <div className="flex items-center gap-2 text-sm font-semibold text-[#0b4f36]">
+                <Users className="w-4 h-4 text-[#8c1f3d] shrink-0" aria-hidden="true" />
+                <span>Joined Players ({ordered.length})</span>
+              </div>
+
+              {ordered.length === 0 ? (
+                <p className="mt-3 text-sm text-[#1a1a1a]/70">
+                  Waiting for participants to join...
+                </p>
+              ) : (
+                <ul data-testid="lobby-joined-list" className="mt-3 flex flex-wrap gap-2">
+                  {ordered.map((entry) => {
+                    const isCurrent = entry.id === currentPlayer.id;
+                    return (
+                      <li key={entry.id}>
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#f7f1e6] text-[#1a1a1a] text-sm font-medium border whitespace-nowrap ${
+                            isCurrent ? 'border-[#8c1f3d] font-semibold' : 'border-[#0b4f36]'
+                          }`}
+                        >
+                          <span>{entry.nickname}</span>
+                          {isCurrent && (
+                            <span className="text-xs font-semibold text-[#8c1f3d]">(You)</span>
+                          )}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </section>
+        )}
       </div>
     </main>
   );

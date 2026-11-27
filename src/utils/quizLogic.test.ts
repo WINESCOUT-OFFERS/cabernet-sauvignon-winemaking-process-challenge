@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import { QUIZ_QUESTIONS } from '../data/quizQuestions';
 import {
   QUIZ_STATE_NICKNAME,
+  computeCountdownSecondsRemaining,
   computeSubmissionUpdate,
   evaluateAnswer,
   extractQuizStarted,
+  extractQuizState,
   filterParticipants,
   formatAdminEmail,
   formatProgress,
@@ -254,4 +256,43 @@ test('filterParticipants and extractQuizStarted handle __QUIZ_STATE__ row cleanl
     extractQuizStarted([{ ...controlRow, is_finished: true }, studentRow]),
     true,
   );
+});
+
+test('extractQuizState and computeCountdownSecondsRemaining calculate 10->0 timer accurately', () => {
+  const waitingRow: LeaderboardEntry = {
+    id: 'ctrl',
+    nickname: QUIZ_STATE_NICKNAME,
+    score: 0,
+    current_question: 1,
+    is_finished: false,
+    got_speed_bonus: false,
+    finished_at: null,
+    created_at: '2026-11-27T09:00:00.000Z',
+  };
+
+  assert.deepEqual(extractQuizState([waitingRow]), {
+    isStarted: false,
+    startedAt: null,
+  });
+  assert.equal(computeCountdownSecondsRemaining(false, null, 1000), 10);
+
+  const startedAt = '2026-11-27T09:05:00.000Z';
+  const startMs = Date.parse(startedAt);
+  const startedRow: LeaderboardEntry = {
+    ...waitingRow,
+    is_finished: true,
+    finished_at: startedAt,
+  };
+
+  assert.deepEqual(extractQuizState([startedRow]), {
+    isStarted: true,
+    startedAt,
+  });
+
+  assert.equal(computeCountdownSecondsRemaining(true, startedAt, startMs), 10);
+  assert.equal(computeCountdownSecondsRemaining(true, startedAt, startMs + 500), 10);
+  assert.equal(computeCountdownSecondsRemaining(true, startedAt, startMs + 1001), 9);
+  assert.equal(computeCountdownSecondsRemaining(true, startedAt, startMs + 9500), 1);
+  assert.equal(computeCountdownSecondsRemaining(true, startedAt, startMs + 10000), 0);
+  assert.equal(computeCountdownSecondsRemaining(true, startedAt, startMs + 15000), 0);
 });

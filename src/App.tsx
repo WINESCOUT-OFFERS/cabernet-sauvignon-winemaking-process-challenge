@@ -19,11 +19,21 @@ import {
   type LeaderboardSnapshot,
 } from './services/leaderboardService';
 import { supabase } from './supabaseClient';
-import { evaluateAnswer, type LeaderboardEntry } from './utils/quizLogic';
+import {
+  COUNTDOWN_DURATION_SECONDS,
+  computeCountdownSecondsRemaining,
+  evaluateAnswer,
+  type LeaderboardEntry,
+  type QuizSyncState,
+} from './utils/quizLogic';
 
 export default function App() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
-  const [isQuizStarted, setIsQuizStarted] = useState(false);
+  const [quizState, setQuizState] = useState<QuizSyncState>({
+    isStarted: false,
+    startedAt: null,
+  });
+  const [remainingSeconds, setRemainingSeconds] = useState(COUNTDOWN_DURATION_SECONDS);
   const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(true);
 
   const [currentPlayer, setCurrentPlayer] = useState<LeaderboardEntry | null>(null);
@@ -58,31 +68,33 @@ export default function App() {
     setHasEnteredSummary(false);
   }, []);
 
-  const applyLeaderboardSnapshot = useCallback(
-    (snapshot: LeaderboardSnapshot) => {
-      setLeaderboard(snapshot.participants);
-      setIsQuizStarted(snapshot.isQuizStarted);
-      setIsLoadingLeaderboard(false);
+  const applyLeaderboardSnapshot = useCallback((snapshot: LeaderboardSnapshot) => {
+    setLeaderboard(snapshot.participants);
+    setQuizState(snapshot.quizState);
+    setRemainingSeconds(
+      computeCountdownSecondsRemaining(
+        snapshot.quizState.isStarted,
+        snapshot.quizState.startedAt,
+      ),
+    );
+    setIsLoadingLeaderboard(false);
 
-      setCurrentPlayer((prev) => {
-        if (!prev) return null;
-        const stillExists = snapshot.participants.find((item) => item.id === prev.id);
-        if (!stillExists) {
-          // Session was cleared by an admin reset
-          setActiveQuestionIndex(0);
-          setSelectedOptionId(null);
-          setIsSubmitted(false);
-          setSubmitError(null);
-          setCorrectCount(0);
-          setAwardedSpeedBonus(false);
-          setHasEnteredSummary(false);
-          return null;
-        }
-        return stillExists;
-      });
-    },
-    [],
-  );
+    setCurrentPlayer((prev) => {
+      if (!prev) return null;
+      const stillExists = snapshot.participants.find((item) => item.id === prev.id);
+      if (!stillExists) {
+        setActiveQuestionIndex(0);
+        setSelectedOptionId(null);
+        setIsSubmitted(false);
+        setSubmitError(null);
+        setCorrectCount(0);
+        setAwardedSpeedBonus(false);
+        setHasEnteredSummary(false);
+        return null;
+      }
+      return stillExists;
+    });
+  }, []);
 
   const refreshLeaderboard = useCallback(async () => {
     try {
@@ -102,6 +114,32 @@ export default function App() {
     });
     return unsubscribe;
   }, [refreshLeaderboard, applyLeaderboardSnapshot]);
+
+  // Real-time countdown ticker driven by __QUIZ_STATE__.finished_at
+  useEffect(() => {
+    const syncNow = () => {
+      const next = computeCountdownSecondsRemaining(
+        quizState.isStarted,
+        quizState.startedAt,
+      );
+      setRemainingSeconds((prev) => (prev !== next ? next : prev));
+      return next;
+    };
+
+    const currentRemaining = syncNow();
+    if (!quizState.isStarted || currentRemaining <= 0) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      const next = syncNow();
+      if (next <= 0) {
+        window.clearInterval(timer);
+      }
+    }, 100);
+
+    return () => window.clearInterval(timer);
+  }, [quizState.isStarted, quizState.startedAt]);
 
   useEffect(() => {
     let isMounted = true;
@@ -138,35 +176,38 @@ export default function App() {
     };
   }, []);
 
-  const handleJoin = useCallback(
-    async (nickname: string) => {
-      setIsJoining(true);
-      setJoinError(null);
-      try {
-        const player = await joinChallenge(nickname);
-        const snapshot = await fetchLeaderboardState();
-        setLeaderboard(snapshot.participants);
-        setIsQuizStarted(snapshot.isQuizStarted);
-        setCurrentPlayer(player);
-        setActiveQuestionIndex(0);
-        setSelectedOptionId(null);
-        setIsSubmitted(false);
-        setSubmitError(null);
-        setCorrectCount(0);
-        setAwardedSpeedBonus(false);
-        setHasEnteredSummary(false);
-      } catch (err) {
-        setJoinError(
-          err instanceof Error
-            ? err.message
-            : 'Unable to connect to the leaderboard. Please try again.',
-        );
-      } finally {
-        setIsJoining(false);
-      }
-    },
-    [],
-  );
+  const handleJoin = useCallback(async (nickname: string) => {
+    setIsJoining(true);
+    setJoinError(null);
+    try {
+      const player = await joinChallenge(nickname);
+      const snapshot = await fetchLeaderboardState();
+      setLeaderboard(snapshot.participants);
+      setQuizState(snapshot.quizState);
+      setRemainingSeconds(
+        computeCountdownSecondsRemaining(
+          snapshot.quizState.isStarted,
+          snapshot.quizState.startedAt,
+        ),
+      );
+      setCurrentPlayer(player);
+      setActiveQuestionIndex(0);
+      setSelectedOptionId(null);
+      setIsSubmitted(false);
+      setSubmitError(null);
+      setCorrectCount(0);
+      setAwardedSpeedBonus(false);
+      setHasEnteredSummary(false);
+    } catch (err) {
+      setJoinError(
+        err instanceof Error
+          ? err.message
+          : 'Unable to connect to the leaderboard. Please try again.',
+      );
+    } finally {
+      setIsJoining(false);
+    }
+  }, []);
 
   // Support ?autostart=1 for automated testability
   useEffect(() => {
@@ -236,8 +277,9 @@ export default function App() {
     }
     setIsStartingQuiz(true);
     try {
-      await startQuiz();
-      setIsQuizStarted(true);
+      const startedAt = await startQuiz();
+      setQuizState({ isStarted: true, startedAt });
+      setRemainingSeconds(computeCountdownSecondsRemaining(true, startedAt));
       await refreshLeaderboard();
     } finally {
       setIsStartingQuiz(false);
@@ -256,7 +298,8 @@ export default function App() {
     try {
       await resetLeaderboard();
       setLeaderboard([]);
-      setIsQuizStarted(false);
+      setQuizState({ isStarted: false, startedAt: null });
+      setRemainingSeconds(COUNTDOWN_DURATION_SECONDS);
       handleStartNewSession();
       await refreshLeaderboard();
     } finally {
@@ -277,6 +320,7 @@ export default function App() {
     ? leaderboard.findIndex((item) => item.id === currentPlayer.id)
     : -1;
   const currentRank = currentRankIndex >= 0 ? currentRankIndex + 1 : null;
+  const isLiveQuizActive = quizState.isStarted && remainingSeconds === 0;
 
   return (
     <>
@@ -285,7 +329,8 @@ export default function App() {
           entries={leaderboard}
           totalQuestions={totalQuestions}
           isLoading={isLoadingLeaderboard}
-          isQuizStarted={isQuizStarted}
+          isQuizStarted={quizState.isStarted}
+          remainingSeconds={remainingSeconds}
           isStartingQuiz={isStartingQuiz}
           onStartQuiz={handleStartQuiz}
           onOpenReset={() => setIsResetModalOpen(true)}
@@ -308,8 +353,13 @@ export default function App() {
               alignRight
             />
           </div>
-          {!isQuizStarted ? (
-            <WaitingLobby currentPlayer={currentPlayer} participants={leaderboard} />
+          {!isLiveQuizActive ? (
+            <WaitingLobby
+              currentPlayer={currentPlayer}
+              participants={leaderboard}
+              isQuizStarted={quizState.isStarted}
+              remainingSeconds={remainingSeconds}
+            />
           ) : hasEnteredSummary ? (
             <CompletionSummary
               player={currentPlayer}

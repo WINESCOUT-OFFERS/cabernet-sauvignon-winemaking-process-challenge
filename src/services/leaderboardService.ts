@@ -6,10 +6,11 @@ import {
 import {
   QUIZ_STATE_NICKNAME,
   computeSubmissionUpdate,
-  extractQuizStarted,
+  extractQuizState,
   filterParticipants,
   sortLeaderboard,
   type LeaderboardEntry,
+  type QuizSyncState,
 } from '../utils/quizLogic';
 
 const LOCAL_STORAGE_KEY = 'cabernet_challenge_leaderboard_v1';
@@ -20,7 +21,7 @@ const localListeners = new Set<() => void>();
 
 export interface LeaderboardSnapshot {
   participants: LeaderboardEntry[];
-  isQuizStarted: boolean;
+  quizState: QuizSyncState;
 }
 
 function createControlRow(isStarted = false): LeaderboardEntry {
@@ -135,7 +136,7 @@ export async function fetchLeaderboardState(): Promise<LeaderboardSnapshot> {
     const allRows = readLocalEntries();
     return {
       participants: sortLeaderboard(filterParticipants(allRows)),
-      isQuizStarted: extractQuizStarted(allRows),
+      quizState: extractQuizState(allRows),
     };
   }
 
@@ -158,7 +159,7 @@ export async function fetchLeaderboardState(): Promise<LeaderboardSnapshot> {
 
   return {
     participants: sortLeaderboard(filterParticipants(allRows)),
-    isQuizStarted: extractQuizStarted(allRows),
+    quizState: extractQuizState(allRows),
   };
 }
 
@@ -204,25 +205,30 @@ export async function joinChallenge(nickname: string): Promise<LeaderboardEntry>
   return data as LeaderboardEntry;
 }
 
-export async function startQuiz(): Promise<void> {
+export async function startQuiz(): Promise<string> {
+  const startedAt = new Date().toISOString();
+
   if (!isSupabaseConfigured) {
     const entries = readLocalEntries();
     const next = entries.map((item) =>
-      item.nickname === QUIZ_STATE_NICKNAME ? { ...item, is_finished: true } : item,
+      item.nickname === QUIZ_STATE_NICKNAME
+        ? { ...item, is_finished: true, finished_at: startedAt }
+        : item,
     );
     writeLocalEntries(next);
-    return;
+    return startedAt;
   }
 
   await ensureSupabaseControlRow();
   const { error } = await supabase
     .from(LEADERBOARD_TABLE)
-    .update({ is_finished: true })
+    .update({ is_finished: true, finished_at: startedAt })
     .eq('nickname', QUIZ_STATE_NICKNAME);
 
   if (error) {
     throw new Error(error.message || 'Failed to start quiz');
   }
+  return startedAt;
 }
 
 export interface SubmitQuestionProgressInput {
@@ -366,7 +372,7 @@ export async function resetLeaderboard(): Promise<void> {
 
   const { error: resetStateError } = await supabase
     .from(LEADERBOARD_TABLE)
-    .update({ is_finished: false, score: 0 })
+    .update({ is_finished: false, finished_at: null, score: 0 })
     .eq('nickname', QUIZ_STATE_NICKNAME);
 
   if (resetStateError) {
