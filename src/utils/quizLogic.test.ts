@@ -2,8 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { QUIZ_QUESTIONS } from '../data/quizQuestions';
 import {
+  QUIZ_STATE_NICKNAME,
   computeSubmissionUpdate,
   evaluateAnswer,
+  extractQuizStarted,
+  filterParticipants,
   formatAdminEmail,
   formatProgress,
   sortByJoinOrder,
@@ -216,5 +219,39 @@ test('sortByJoinOrder orders participants chronologically by created_at', () => 
   assert.deepEqual(
     sortByJoinOrder(entries).map((e) => e.nickname),
     ['First', 'Second'],
+  );
+});
+
+test('filterParticipants and extractQuizStarted handle __QUIZ_STATE__ row cleanly', () => {
+  const controlRow: LeaderboardEntry = {
+    id: 'ctrl',
+    nickname: QUIZ_STATE_NICKNAME,
+    score: 0,
+    current_question: 1,
+    is_finished: false,
+    got_speed_bonus: false,
+    finished_at: null,
+    created_at: '2026-11-27T09:00:00.000Z',
+  };
+  const studentRow: LeaderboardEntry = {
+    id: 's1',
+    nickname: 'Elena',
+    score: 2,
+    current_question: 3,
+    is_finished: false,
+    got_speed_bonus: false,
+    finished_at: null,
+    created_at: '2026-11-27T09:01:00.000Z',
+  };
+
+  assert.equal(validateNickname(QUIZ_STATE_NICKNAME).valid, false);
+  assert.deepEqual(
+    filterParticipants([controlRow, studentRow]).map((e) => e.nickname),
+    ['Elena'],
+  );
+  assert.equal(extractQuizStarted([controlRow, studentRow]), false);
+  assert.equal(
+    extractQuizStarted([{ ...controlRow, is_finished: true }, studentRow]),
+    true,
   );
 });

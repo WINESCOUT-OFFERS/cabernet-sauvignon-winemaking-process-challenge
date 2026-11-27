@@ -4,7 +4,10 @@ import {
   supabase,
 } from '../supabaseClient';
 import {
+  QUIZ_STATE_NICKNAME,
   computeSubmissionUpdate,
+  extractQuizStarted,
+  filterParticipants,
   sortLeaderboard,
   type LeaderboardEntry,
 } from '../utils/quizLogic';
@@ -15,9 +18,28 @@ const BROADCAST_CHANNEL_NAME = 'cabernet_challenge_leaderboard_channel';
 
 const localListeners = new Set<() => void>();
 
+export interface LeaderboardSnapshot {
+  participants: LeaderboardEntry[];
+  isQuizStarted: boolean;
+}
+
+function createControlRow(isStarted = false): LeaderboardEntry {
+  return {
+    id: 'quiz-state-control',
+    nickname: QUIZ_STATE_NICKNAME,
+    score: 0,
+    current_question: 1,
+    is_finished: isStarted,
+    got_speed_bonus: false,
+    finished_at: null,
+    created_at: new Date(0).toISOString(),
+  };
+}
+
 function createInitialSeedEntries(): LeaderboardEntry[] {
   const now = Date.now();
   return [
+    createControlRow(false),
     {
       id: 'seed-claire',
       nickname: 'Claire (Pauillac)',
@@ -52,11 +74,17 @@ function readLocalEntries(): LeaderboardEntry[] {
       return seeded;
     }
     const raw = window.localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (!raw) return [];
+    if (!raw) return [createControlRow(false)];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    const list = Array.isArray(parsed) ? (parsed as LeaderboardEntry[]) : [];
+    if (!list.some((item) => item.nickname === QUIZ_STATE_NICKNAME)) {
+      const withControl = [createControlRow(false), ...list];
+      window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(withControl));
+      return withControl;
+    }
+    return list;
   } catch {
-    return [];
+    return [createControlRow(false)];
   }
 }
 
@@ -76,16 +104,62 @@ function writeLocalEntries(entries: LeaderboardEntry[]): void {
   }
 }
 
-export async function fetchLeaderboard(): Promise<LeaderboardEntry[]> {
+async function ensureSupabaseControlRow(): Promise<void> {
+  const { data: existing, error: selectError } = await supabase
+    .from(LEADERBOARD_TABLE)
+    .select('id')
+    .eq('nickname', QUIZ_STATE_NICKNAME)
+    .limit(1);
+
+  if (selectError) {
+    throw new Error(selectError.message || 'Failed to check quiz state');
+  }
+
+  if (!existing || existing.length === 0) {
+    const { error: insertError } = await supabase.from(LEADERBOARD_TABLE).insert({
+      nickname: QUIZ_STATE_NICKNAME,
+      score: 0,
+      current_question: 1,
+      is_finished: false,
+      got_speed_bonus: false,
+      finished_at: null,
+    });
+    if (insertError) {
+      throw new Error(insertError.message || 'Failed to initialize quiz state');
+    }
+  }
+}
+
+export async function fetchLeaderboardState(): Promise<LeaderboardSnapshot> {
   if (!isSupabaseConfigured) {
-    return sortLeaderboard(readLocalEntries());
+    const allRows = readLocalEntries();
+    return {
+      participants: sortLeaderboard(filterParticipants(allRows)),
+      isQuizStarted: extractQuizStarted(allRows),
+    };
   }
 
   const { data, error } = await supabase.from(LEADERBOARD_TABLE).select('*');
   if (error) {
     throw new Error(error.message || 'Failed to load leaderboard');
   }
-  return sortLeaderboard((data ?? []) as LeaderboardEntry[]);
+
+  let allRows = (data ?? []) as LeaderboardEntry[];
+  if (!allRows.some((row) => row.nickname === QUIZ_STATE_NICKNAME)) {
+    await ensureSupabaseControlRow();
+    const { data: refreshed, error: refreshError } = await supabase
+      .from(LEADERBOARD_TABLE)
+      .select('*');
+    if (refreshError) {
+      throw new Error(refreshError.message || 'Failed to reload leaderboard');
+    }
+    allRows = (refreshed ?? []) as LeaderboardEntry[];
+  }
+
+  return {
+    participants: sortLeaderboard(filterParticipants(allRows)),
+    isQuizStarted: extractQuizStarted(allRows),
+  };
 }
 
 export async function joinChallenge(nickname: string): Promise<LeaderboardEntry> {
@@ -108,6 +182,8 @@ export async function joinChallenge(nickname: string): Promise<LeaderboardEntry>
     return newEntry;
   }
 
+  await ensureSupabaseControlRow();
+
   const { data, error } = await supabase
     .from(LEADERBOARD_TABLE)
     .insert({
@@ -126,6 +202,27 @@ export async function joinChallenge(nickname: string): Promise<LeaderboardEntry>
   }
 
   return data as LeaderboardEntry;
+}
+
+export async function startQuiz(): Promise<void> {
+  if (!isSupabaseConfigured) {
+    const entries = readLocalEntries();
+    const next = entries.map((item) =>
+      item.nickname === QUIZ_STATE_NICKNAME ? { ...item, is_finished: true } : item,
+    );
+    writeLocalEntries(next);
+    return;
+  }
+
+  await ensureSupabaseControlRow();
+  const { error } = await supabase
+    .from(LEADERBOARD_TABLE)
+    .update({ is_finished: true })
+    .eq('nickname', QUIZ_STATE_NICKNAME);
+
+  if (error) {
+    throw new Error(error.message || 'Failed to start quiz');
+  }
 }
 
 export interface SubmitQuestionProgressInput {
@@ -153,7 +250,7 @@ export async function submitQuestionProgress({
   if (!isSupabaseConfigured) {
     const entries = readLocalEntries();
     const someoneAlreadyWonSpeedBonus = isFinalQuestion
-      ? entries.some((item) => item.got_speed_bonus === true)
+      ? filterParticipants(entries).some((item) => item.got_speed_bonus === true)
       : false;
 
     const computed = computeSubmissionUpdate({
@@ -205,6 +302,7 @@ export async function submitQuestionProgress({
       .from(LEADERBOARD_TABLE)
       .select('id')
       .eq('got_speed_bonus', true)
+      .neq('nickname', QUIZ_STATE_NICKNAME)
       .limit(1);
 
     if (bonusCheckError) {
@@ -251,28 +349,39 @@ export async function submitQuestionProgress({
 
 export async function resetLeaderboard(): Promise<void> {
   if (!isSupabaseConfigured) {
-    writeLocalEntries([]);
+    writeLocalEntries([createControlRow(false)]);
     return;
   }
 
-  const { error } = await supabase
+  const { error: deleteError } = await supabase
     .from(LEADERBOARD_TABLE)
     .delete()
-    .not('id', 'is', null);
+    .neq('nickname', QUIZ_STATE_NICKNAME);
 
-  if (error) {
-    throw new Error(error.message || 'Failed to reset leaderboard');
+  if (deleteError) {
+    throw new Error(deleteError.message || 'Failed to reset leaderboard');
+  }
+
+  await ensureSupabaseControlRow();
+
+  const { error: resetStateError } = await supabase
+    .from(LEADERBOARD_TABLE)
+    .update({ is_finished: false, score: 0 })
+    .eq('nickname', QUIZ_STATE_NICKNAME);
+
+  if (resetStateError) {
+    throw new Error(resetStateError.message || 'Failed to reset quiz state');
   }
 }
 
 export function subscribeToLeaderboard(
-  onLeaderboardUpdate: (entries: LeaderboardEntry[]) => void,
+  onLeaderboardUpdate: (snapshot: LeaderboardSnapshot) => void,
 ): () => void {
   let isActive = true;
 
   const refresh = async () => {
     try {
-      const latest = await fetchLeaderboard();
+      const latest = await fetchLeaderboardState();
       if (isActive) {
         onLeaderboardUpdate(latest);
       }

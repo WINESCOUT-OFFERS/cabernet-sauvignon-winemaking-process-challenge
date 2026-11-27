@@ -1,5 +1,5 @@
 import { QRCodeSVG } from 'qrcode.react';
-import { Crown, LogOut, RotateCcw, Trophy, Users, Zap } from 'lucide-react';
+import { Crown, LogOut, Play, RotateCcw, Trophy, Users, Zap } from 'lucide-react';
 import { QUIZ_SCENARIO, QUIZ_TITLE } from '../data/quizQuestions';
 import {
   formatProgress,
@@ -11,6 +11,9 @@ interface AdminProjectorViewProps {
   entries: LeaderboardEntry[];
   totalQuestions: number;
   isLoading: boolean;
+  isQuizStarted: boolean;
+  isStartingQuiz: boolean;
+  onStartQuiz: () => Promise<void>;
   onOpenReset: () => void;
   onLogout: () => void;
 }
@@ -19,6 +22,9 @@ export function AdminProjectorView({
   entries,
   totalQuestions,
   isLoading,
+  isQuizStarted,
+  isStartingQuiz,
+  onStartQuiz,
   onOpenReset,
   onLogout,
 }: AdminProjectorViewProps) {
@@ -44,7 +50,25 @@ export function AdminProjectorView({
             </h2>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0 self-start">
+          <div className="flex flex-wrap items-center gap-3 shrink-0 self-start">
+            {!isQuizStarted ? (
+              <button
+                type="button"
+                disabled={isStartingQuiz}
+                onClick={() => void onStartQuiz()}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#0b4f36] hover:bg-[#083b28] disabled:opacity-60 text-white text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap shadow-xs"
+              >
+                <Play className="w-4 h-4" aria-hidden="true" />
+                {isStartingQuiz ? 'Starting...' : 'Start Quiz'}
+              </button>
+            ) : (
+              <span
+                data-testid="quiz-in-progress-badge"
+                className="inline-flex items-center px-4 py-2.5 rounded-xl bg-[#0b4f36]/10 border border-[#0b4f36] text-[#0b4f36] text-sm font-semibold whitespace-nowrap"
+              >
+                Quiz in Progress
+              </span>
+            )}
             <button
               type="button"
               onClick={onOpenReset}

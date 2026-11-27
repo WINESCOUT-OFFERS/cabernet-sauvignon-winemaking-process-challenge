@@ -7,19 +7,23 @@ import { LeaderboardPanel } from './components/LeaderboardPanel';
 import { LoginScreen } from './components/LoginScreen';
 import { QuizPanel } from './components/QuizPanel';
 import { ResetModal } from './components/ResetModal';
+import { WaitingLobby } from './components/WaitingLobby';
 import { QUIZ_QUESTIONS } from './data/quizQuestions';
 import {
-  fetchLeaderboard,
+  fetchLeaderboardState,
   joinChallenge,
   resetLeaderboard,
+  startQuiz,
   submitQuestionProgress,
   subscribeToLeaderboard,
+  type LeaderboardSnapshot,
 } from './services/leaderboardService';
 import { supabase } from './supabaseClient';
 import { evaluateAnswer, type LeaderboardEntry } from './utils/quizLogic';
 
 export default function App() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [isQuizStarted, setIsQuizStarted] = useState(false);
   const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(true);
 
   const [currentPlayer, setCurrentPlayer] = useState<LeaderboardEntry | null>(null);
@@ -37,30 +41,67 @@ export default function App() {
 
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
+  const [isStartingQuiz, setIsStartingQuiz] = useState(false);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
   const totalQuestions = QUIZ_QUESTIONS.length;
 
+  const handleStartNewSession = useCallback(() => {
+    setCurrentPlayer(null);
+    setActiveQuestionIndex(0);
+    setSelectedOptionId(null);
+    setIsSubmitted(false);
+    setSubmitError(null);
+    setCorrectCount(0);
+    setAwardedSpeedBonus(false);
+    setHasEnteredSummary(false);
+  }, []);
+
+  const applyLeaderboardSnapshot = useCallback(
+    (snapshot: LeaderboardSnapshot) => {
+      setLeaderboard(snapshot.participants);
+      setIsQuizStarted(snapshot.isQuizStarted);
+      setIsLoadingLeaderboard(false);
+
+      setCurrentPlayer((prev) => {
+        if (!prev) return null;
+        const stillExists = snapshot.participants.find((item) => item.id === prev.id);
+        if (!stillExists) {
+          // Session was cleared by an admin reset
+          setActiveQuestionIndex(0);
+          setSelectedOptionId(null);
+          setIsSubmitted(false);
+          setSubmitError(null);
+          setCorrectCount(0);
+          setAwardedSpeedBonus(false);
+          setHasEnteredSummary(false);
+          return null;
+        }
+        return stillExists;
+      });
+    },
+    [],
+  );
+
   const refreshLeaderboard = useCallback(async () => {
     try {
-      const data = await fetchLeaderboard();
-      setLeaderboard(data);
+      const snapshot = await fetchLeaderboardState();
+      applyLeaderboardSnapshot(snapshot);
     } catch {
       // Keep existing leaderboard state on transient error
     } finally {
       setIsLoadingLeaderboard(false);
     }
-  }, []);
+  }, [applyLeaderboardSnapshot]);
 
   useEffect(() => {
     void refreshLeaderboard();
-    const unsubscribe = subscribeToLeaderboard((updated) => {
-      setLeaderboard(updated);
-      setIsLoadingLeaderboard(false);
+    const unsubscribe = subscribeToLeaderboard((snapshot) => {
+      applyLeaderboardSnapshot(snapshot);
     });
     return unsubscribe;
-  }, [refreshLeaderboard]);
+  }, [refreshLeaderboard, applyLeaderboardSnapshot]);
 
   useEffect(() => {
     let isMounted = true;
@@ -103,6 +144,9 @@ export default function App() {
       setJoinError(null);
       try {
         const player = await joinChallenge(nickname);
+        const snapshot = await fetchLeaderboardState();
+        setLeaderboard(snapshot.participants);
+        setIsQuizStarted(snapshot.isQuizStarted);
         setCurrentPlayer(player);
         setActiveQuestionIndex(0);
         setSelectedOptionId(null);
@@ -111,7 +155,6 @@ export default function App() {
         setCorrectCount(0);
         setAwardedSpeedBonus(false);
         setHasEnteredSummary(false);
-        await refreshLeaderboard();
       } catch (err) {
         setJoinError(
           err instanceof Error
@@ -122,7 +165,7 @@ export default function App() {
         setIsJoining(false);
       }
     },
-    [refreshLeaderboard],
+    [],
   );
 
   // Support ?autostart=1 for automated testability
@@ -180,20 +223,30 @@ export default function App() {
     setSubmitError(null);
   };
 
-  const handleStartNewSession = () => {
-    setCurrentPlayer(null);
-    setActiveQuestionIndex(0);
-    setSelectedOptionId(null);
-    setIsSubmitted(false);
-    setSubmitError(null);
-    setCorrectCount(0);
-    setAwardedSpeedBonus(false);
-    setHasEnteredSummary(false);
+  const verifyActiveAdminSession = async (): Promise<boolean> => {
+    const { data } = await supabase.auth.getSession();
+    return Boolean(data.session);
+  };
+
+  const handleStartQuiz = async () => {
+    const hasSession = await verifyActiveAdminSession();
+    if (!hasSession) {
+      setIsAdminAuthenticated(false);
+      return;
+    }
+    setIsStartingQuiz(true);
+    try {
+      await startQuiz();
+      setIsQuizStarted(true);
+      await refreshLeaderboard();
+    } finally {
+      setIsStartingQuiz(false);
+    }
   };
 
   const handleConfirmReset = async () => {
-    const { data } = await supabase.auth.getSession();
-    if (!data.session) {
+    const hasSession = await verifyActiveAdminSession();
+    if (!hasSession) {
       setIsAdminAuthenticated(false);
       setIsResetModalOpen(false);
       throw new Error('Admin session required to reset the leaderboard.');
@@ -203,6 +256,7 @@ export default function App() {
     try {
       await resetLeaderboard();
       setLeaderboard([]);
+      setIsQuizStarted(false);
       handleStartNewSession();
       await refreshLeaderboard();
     } finally {
@@ -226,11 +280,14 @@ export default function App() {
 
   return (
     <>
-      {isAdminAuthenticated ? (
+      {isAdminAuthenticated && !currentPlayer ? (
         <AdminProjectorView
           entries={leaderboard}
           totalQuestions={totalQuestions}
           isLoading={isLoadingLeaderboard}
+          isQuizStarted={isQuizStarted}
+          isStartingQuiz={isStartingQuiz}
+          onStartQuiz={handleStartQuiz}
           onOpenReset={() => setIsResetModalOpen(true)}
           onLogout={() => void handleAdminLogout()}
         />
@@ -251,7 +308,9 @@ export default function App() {
               alignRight
             />
           </div>
-          {hasEnteredSummary ? (
+          {!isQuizStarted ? (
+            <WaitingLobby currentPlayer={currentPlayer} participants={leaderboard} />
+          ) : hasEnteredSummary ? (
             <CompletionSummary
               player={currentPlayer}
               rank={currentRank}

@@ -30,6 +30,7 @@ export interface SubmissionComputationResult {
 }
 
 export const SPEED_BONUS_POINTS = 3;
+export const QUIZ_STATE_NICKNAME = '__QUIZ_STATE__';
 
 export function formatAdminEmail(rawUsername: string): string {
   const trimmed = rawUsername.trim().toLowerCase();
@@ -41,6 +42,9 @@ export function validateNickname(raw: string): { valid: boolean; trimmed: string
   const trimmed = raw.trim();
   if (!trimmed) {
     return { valid: false, trimmed, error: 'Please enter a nickname to join the challenge.' };
+  }
+  if (trimmed === QUIZ_STATE_NICKNAME) {
+    return { valid: false, trimmed, error: 'That nickname is reserved.' };
   }
   if (trimmed.length > 32) {
     return { valid: false, trimmed, error: 'Nickname must be 32 characters or fewer.' };
@@ -131,6 +135,16 @@ export function sortByJoinOrder(entries: LeaderboardEntry[]): LeaderboardEntry[]
     }
     return String(a.id).localeCompare(String(b.id));
   });
+}
+
+export function filterParticipants(entries: LeaderboardEntry[]): LeaderboardEntry[] {
+  return entries.filter((entry) => entry.nickname !== QUIZ_STATE_NICKNAME);
+}
+
+export function extractQuizStarted(entries: LeaderboardEntry[]): boolean {
+  return entries.some(
+    (entry) => entry.nickname === QUIZ_STATE_NICKNAME && entry.is_finished === true,
+  );
 }
 
 export function formatProgress(entry: LeaderboardEntry, totalQuestions: number): string {
